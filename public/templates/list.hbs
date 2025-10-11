@@ -1,0 +1,32 @@
+{{!-- контекст: { groups: [{ date, rel, items:[{id,brief,fulltext,expanded}]}] } --}}
+
+{{#each groups}}
+    <section class="section">
+        <div class="date-header">
+            {{fmtDateUA date}}
+            {{#if rel}} <span class="badge">• {{rel}}</span>{{/if}}
+        </div>
+
+        <div class="wrap">
+            {{#each items}}
+                <div class="item" id="card-{{id}}">
+                    <button class="row-btn" role="button"
+                            id="row-{{id}}"
+                            data-id="{{id}}"
+                            aria-controls="full-{{id}}"
+                            aria-expanded="{{#if expanded}}true{{else}}false{{/if}}">
+                        <div class="left">
+                            <div class="date muted">ID {{id}}</div>
+                            <div class="brief">{{brief}}</div>
+                        </div>
+                        <span class="chev {{#if expanded}}expanded{{/if}}" aria-hidden="true">▶</span>
+                    </button>
+
+                    {{#if expanded}}
+                        <div class="full" id="full-{{id}}">{{fulltext}}</div>
+                    {{/if}}
+                </div>
+            {{/each}}
+        </div>
+    </section>
+{{/each}}

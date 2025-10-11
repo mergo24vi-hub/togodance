@@ -1,123 +1,102 @@
 import events from './events.js';
 import {
-    fmtDateUA,
-    relativeLabel,
-    compareEventsByDateThenId,
-    groupByDate,
+    fmtDateUA, relativeLabel,
+    compareEventsByDateThenId, groupByDate
 } from './date-utils.js';
+import {
+    registerDefaultHelpers, renderTemplate
+} from './tpl/engine.js';
 
-// ---- стан ----
-const state = { expandedId: null, events };
-
-// ---- рендер ----
 const app = document.getElementById('app');
 
-function el(tag, attrs = {}, children = []) {
-    const node = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs)) {
-        if (k === 'className') node.className = v;
-        else if (k === 'text') node.textContent = v;
-        else if (k.startsWith('on') && typeof v === 'function')
-            node.addEventListener(k.slice(2).toLowerCase(), v);
-        else node.setAttribute(k, v);
-    }
-    for (const c of [].concat(children)) node.append(c);
-    return node;
-}
+const state = {
+    expandedId: null,
+    events
+};
 
-function renderSection(date, items) {
-    const section = el('section', { className: 'section' });
-    const rel = relativeLabel(date);
-    const hdr = el('div', { className: 'date-header' }, [
-        fmtDateUA(date),
-        rel ? el('span', { className: 'badge' }, [`• ${rel}`]) : ''
-    ]);
-    const list = el('div', { className: 'wrap' });
+// 1) Хелпери для шаблонізатора (1 раз)
+registerDefaultHelpers({ fmtDateUA, relativeLabel });
 
-    for (const it of items) {
-        const isExpanded = state.expandedId === it.id;
-        const btn = el('button', {
-            className: 'row-btn',
-            role: 'button',
-            'aria-expanded': String(isExpanded),
-            'aria-controls': `full-${it.id}`,
-            id: `row-${it.id}`,
-            onClick: () => setExpanded(it.id),
-            onKeydown: (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setExpanded(it.id);
-                }
-            }
-        }, [
-            el('div', { className: 'left' }, [
-                el('div', { className: 'date muted' }, [`ID ${it.id}`]),
-                el('div', { className: 'brief' }, [it.brief]),
-            ]),
-            el('span', { className: `chev ${isExpanded ? 'expanded' : ''}`, 'aria-hidden': 'true' }, ['▶'])
-        ]);
-
-        const card = el('div', { className: 'item', id: `card-${it.id}` }, [btn]);
-        if (isExpanded) {
-            card.append(el('div', { className: 'full', id: `full-${it.id}` }, [it.fulltext]));
-        }
-        list.append(card);
-    }
-
-    section.append(hdr, list);
-    return section;
-}
-
-function render() {
-    app.innerHTML = '';
-
-    if (!state.events.length) {
-        app.append(el('div', { className: 'wrap' }, [
-            el('div', { className: 'muted' }, ['Подій поки немає.'])
-        ]));
-        return;
-    }
-
+// 2) Підготовка даних під шаблон
+function buildViewModel() {
     const sorted = [...state.events].sort(compareEventsByDateThenId);
     const grouped = groupByDate(sorted);
-    for (const [date, items] of grouped) {
-        app.append(renderSection(date, items));
-    }
+
+    const groups = grouped.map(([date, items]) => ({
+        date,
+        rel: relativeLabel(date),
+        items: items.map(it => ({
+            ...it,
+            expanded: state.expandedId === it.id
+        }))
+    }));
+
+    return { groups };
 }
 
-function setExpanded(id, { fromHash = false } = {}) {
-    state.expandedId = (state.expandedId === id) ? null : id;
-    if (!fromHash) {
-        location.hash = state.expandedId ? `#id-${state.expandedId}` : '';
-    }
-    render();
+// 3) Рендер через Handlebars
+async function render() {
+    const html = await renderTemplate('list', buildViewModel(), { baseUrl: './templates' });
+    app.innerHTML = html;
+
+    // Не прокручувати, якщо картка і так у видимій зоні
     if (state.expandedId) {
         const target = document.getElementById(`card-${state.expandedId}`);
         if (target) {
             const rect = target.getBoundingClientRect();
-            const fullyVisible = rect.top >= 0 && rect.bottom <= (window.innerHeight || document.documentElement.clientHeight);
-            if (!fullyVisible) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const visible = rect.top >= 0 && rect.bottom <= (window.innerHeight || document.documentElement.clientHeight);
+            if (!visible) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
 }
 
-// ---- “завантаження” (у тебе дані імпортуються як ESM) ----
-async function loadEvents() {
+// 4) Делегування подій (клік/клавіші на рядку)
+app.addEventListener('click', (e) => {
+    const btn = e.target.closest('.row-btn');
+    if (!btn) return;
+    const id = Number(btn.dataset.id);
+    toggleExpanded(id);
+});
+
+app.addEventListener('keydown', (e) => {
+    const btn = e.target.closest('.row-btn');
+    if (!btn) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const id = Number(btn.dataset.id);
+        toggleExpanded(id);
+    }
+});
+
+/**
+ * Відкриває/закриває картку.
+ * - Звичайний режим: перемикач + оновлення location.hash
+ * - fromHash:true: форсовано встановлює конкретний id (без перемикача та без зміни hash)
+ */
+function toggleExpanded(id, { fromHash = false } = {}) {
+    if (fromHash) {
+        if (state.expandedId !== id) {
+            state.expandedId = id;
+            render();
+        }
+        return;
+    }
+    state.expandedId = (state.expandedId === id) ? null : id;
+    location.hash = state.expandedId ? `#id-${state.expandedId}` : '';
     render();
-    openFromHash();
 }
 
-// ---- хеш-навігація ----
+// 5) Хеш-навігація (не викликаємо повторно на той самий id)
 function openFromHash() {
     const m = location.hash.match(/^#id-(\d+)$/);
     if (m) {
         const id = Number(m[1]);
-        if (state.events.some(e => e.id === id)) {
-            setExpanded(id, { fromHash: true });
+        if (state.events.some(e => e.id === id) && state.expandedId !== id) {
+            toggleExpanded(id, { fromHash: true });
         }
     }
 }
 window.addEventListener('hashchange', openFromHash);
 
-// ---- старт ----
-loadEvents();
+// 6) Старт
+render().then(openFromHash);
