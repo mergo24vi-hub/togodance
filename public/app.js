@@ -1,23 +1,16 @@
 import events from './events.js';
+import {
+    fmtDateUA,
+    relativeLabel,
+    compareEventsByDateThenId,
+    groupByDate,
+} from './date-utils.js';
 
-const fmtDateUA = (iso) =>
-    new Intl.DateTimeFormat('uk-UA', {day: 'numeric', month: 'long'})
-        .format(new Date(iso));
+// ---- стан ----
+const state = { expandedId: null, events };
 
-function startOfDay(d) {
-    const x = new Date(d);
-    x.setHours(0, 0, 0, 0);
-    return x;
-}
-
-function relativeLabel(iso) {
-    const d = startOfDay(new Date(iso)), t = startOfDay(new Date());
-    const diff = Math.round((d - t) / 86400000);
-    if (diff === 0) return 'сьогодні';
-    if (diff === 1) return 'завтра';
-    if (diff === 2) return 'післязавтра';
-    return '';
-}
+// ---- рендер ----
+const app = document.getElementById('app');
 
 function el(tag, attrs = {}, children = []) {
     const node = document.createElement(tag);
@@ -32,20 +25,14 @@ function el(tag, attrs = {}, children = []) {
     return node;
 }
 
-// ---- стан ----
-const state = {expandedId: null, events};
-
-// ---- рендер ----
-const app = document.getElementById('app');
-
 function renderSection(date, items) {
-    const section = el('section', {className: 'section'});
+    const section = el('section', { className: 'section' });
     const rel = relativeLabel(date);
-    const hdr = el('div', {className: 'date-header'}, [
+    const hdr = el('div', { className: 'date-header' }, [
         fmtDateUA(date),
-        rel ? el('span', {className: 'badge'}, [`• ${rel}`]) : ''
+        rel ? el('span', { className: 'badge' }, [`• ${rel}`]) : ''
     ]);
-    const list = el('div', {className: 'wrap'});
+    const list = el('div', { className: 'wrap' });
 
     for (const it of items) {
         const isExpanded = state.expandedId === it.id;
@@ -57,19 +44,22 @@ function renderSection(date, items) {
             id: `row-${it.id}`,
             onClick: () => setExpanded(it.id),
             onKeydown: (e) => {
-                if (e.key === 'Enter') setExpanded(it.id);
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setExpanded(it.id);
+                }
             }
         }, [
-            el('div', {className: 'left'}, [
-                el('div', {className: 'date muted'}, [`ID ${it.id}`]),
-                el('div', {className: 'brief'}, [it.brief]),
+            el('div', { className: 'left' }, [
+                el('div', { className: 'date muted' }, [`ID ${it.id}`]),
+                el('div', { className: 'brief' }, [it.brief]),
             ]),
-            el('span', {className: `chev ${isExpanded ? 'expanded' : ''}`, 'aria-hidden': 'true'}, ['▶'])
+            el('span', { className: `chev ${isExpanded ? 'expanded' : ''}`, 'aria-hidden': 'true' }, ['▶'])
         ]);
 
-        const card = el('div', {className: 'item', id: `card-${it.id}`}, [btn]);
+        const card = el('div', { className: 'item', id: `card-${it.id}` }, [btn]);
         if (isExpanded) {
-            card.append(el('div', {className: 'full', id: `full-${it.id}`}, [it.fulltext]));
+            card.append(el('div', { className: 'full', id: `full-${it.id}` }, [it.fulltext]));
         }
         list.append(card);
     }
@@ -78,52 +68,40 @@ function renderSection(date, items) {
     return section;
 }
 
-function groupByDate(items) {
-    const map = new Map();
-    for (const it of items) {
-        const key = it.event_date || 'невідома дата';
-        if (!map.has(key)) map.set(key, []);
-        map.get(key).push(it);
-    }
-    return Array.from(map.entries())
-        .sort(([a], [b]) => (Date.parse(a) || 0) - (Date.parse(b) || 0));
-}
-
 function render() {
     app.innerHTML = '';
 
     if (!state.events.length) {
-        app.append(el('div', {className: 'wrap'}, [
-            el('div', {className: 'muted'}, ['Подій поки немає.'])
+        app.append(el('div', { className: 'wrap' }, [
+            el('div', { className: 'muted' }, ['Подій поки немає.'])
         ]));
         return;
     }
 
-    const sorted = [...state.events].sort((a, b) => {
-        const ta = Date.parse(a.event_date) || 0;
-        const tb = Date.parse(b.event_date) || 0;
-        return (ta - tb) || ((a.id ?? 0) - (b.id ?? 0));
-    });
-
+    const sorted = [...state.events].sort(compareEventsByDateThenId);
     const grouped = groupByDate(sorted);
     for (const [date, items] of grouped) {
         app.append(renderSection(date, items));
     }
 }
 
-function setExpanded(id, {fromHash = false} = {}) {
+function setExpanded(id, { fromHash = false } = {}) {
     state.expandedId = (state.expandedId === id) ? null : id;
     if (!fromHash) {
         location.hash = state.expandedId ? `#id-${state.expandedId}` : '';
     }
     render();
     if (state.expandedId) {
-        document.getElementById(`card-${state.expandedId}`)
-            ?.scrollIntoView({behavior: 'smooth', block: 'start'});
+        const target = document.getElementById(`card-${state.expandedId}`);
+        if (target) {
+            const rect = target.getBoundingClientRect();
+            const fullyVisible = rect.top >= 0 && rect.bottom <= (window.innerHeight || document.documentElement.clientHeight);
+            if (!fullyVisible) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     }
 }
 
-// ---- завантаження JSON ----
+// ---- “завантаження” (у тебе дані імпортуються як ESM) ----
 async function loadEvents() {
     render();
     openFromHash();
@@ -135,11 +113,10 @@ function openFromHash() {
     if (m) {
         const id = Number(m[1]);
         if (state.events.some(e => e.id === id)) {
-            setExpanded(id, {fromHash: true});
+            setExpanded(id, { fromHash: true });
         }
     }
 }
-
 window.addEventListener('hashchange', openFromHash);
 
 // ---- старт ----
