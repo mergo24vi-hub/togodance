@@ -1,0 +1,5 @@
+.idea
+ngrok.exe
+# Local Netlify folder
+.netlify
+node_modules

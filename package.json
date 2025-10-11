@@ -1,0 +1,22 @@
+{
+  "name": "togodance",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mergo24vi-hub/togodance.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mergo24vi-hub/togodance/issues"
+  },
+  "homepage": "https://github.com/mergo24vi-hub/togodance#readme",
+  "description": "",
+  "dependencies": {
+    "@netlify/functions": "^4.3.0"
+  }
+}
