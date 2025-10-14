@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TG Mini App — Розміри</title>
+    <!-- Офіційний SDK; у Mini App зазвичай вже є, але дубль не завадить -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root { --w: 0; --h: 0; }
+        html, body {
+            height: 100%;
+            margin: 0;
+            background: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #111111);
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+        }
+        .wrap {
+            height: 100%;
+            display: grid;
+            place-items: center;
+            text-align: center;
+            padding: 16px;
+        }
+        .card {
+            padding: 18px 22px;
+            border-radius: 14px;
+            box-shadow: 0 4px 18px rgba(0,0,0,.08);
+            background: var(--tg-theme-secondary-bg-color, #f6f6f6);
+            min-width: 260px;
+        }
+        .num {
+            font-size: 28px;
+            line-height: 1.2;
+            font-variant-numeric: tabular-nums;
+        }
+        .label { opacity: .7; font-size: 12px; }
+        .row + .row { margin-top: 10px; }
+        .hint { margin-top: 12px; font-size: 12px; opacity: .7; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="card">
+        <div class="row">
+            <div class="label">Ширина</div>
+            <div class="num" id="w">—</div>
+        </div>
+        <div class="row">
+            <div class="label">Висота</div>
+            <div class="num" id="h">—</div>
+        </div>
+        <div class="hint" id="mode">Очікування...</div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const wEl = document.getElementById('w');
+        const hEl = document.getElementById('h');
+        const modeEl = document.getElementById('mode');
+
+        const tg = (window.Telegram && Telegram.WebApp) ? Telegram.WebApp : null;
+
+        // Отримати поточні розміри
+        function readSize() {
+            const width  = Math.round(window.innerWidth);
+            // У Telegram беремо з API, інакше fallback на window.innerHeight
+            const height = Math.round(tg ? (tg.viewportHeight || window.innerHeight) : window.innerHeight);
+            return { width, height };
+        }
+
+        // Намалювати значення
+        function render({ width, height }, note) {
+            wEl.textContent = width + ' px';
+            hEl.textContent = height + ' px';
+            if (note) modeEl.textContent = note;
+            // (необов’язково) покласти у CSS-змінні
+            document.documentElement.style.setProperty('--w', width);
+            document.documentElement.style.setProperty('--h', height);
+        }
+
+        // Дебаунс для resize
+        let t = null;
+        function debounce(fn, ms) {
+            return function (...args) {
+                clearTimeout(t);
+                t = setTimeout(() => fn.apply(this, args), ms);
+            };
+        }
+
+        // Ініціалізація
+        function init() {
+            const first = readSize();
+            render(first, tg ? (tg.isExpanded ? 'Telegram WebApp (expanded)' : 'Telegram WebApp') : 'Звичайний браузер');
+
+            if (tg) {
+                try { tg.ready(); } catch(_) {}
+                // Спробувати розгорнути на максимум
+                if (!tg.isExpanded && typeof tg.expand === 'function') tg.expand();
+
+                // Слухати зміни viewport у Telegram
+                tg.onEvent('viewport_changed', (ev) => {
+                    const sz = readSize(); // висота гарантовано свіжа через tg.viewportHeight
+                    const tag =
+                        'viewport_changed' +
+                        (ev?.is_expanded ? ' (expanded)' : '') +
+                        (ev?.is_state_stable ? ' [stable]' : '');
+                    render(sz, tag);
+                });
+            }
+
+            // Поза Telegram (та про всяк випадок у ньому) слухаємо резайз
+            window.addEventListener('resize', debounce(() => {
+                render(readSize(), tg ? 'window.resize + TG fallback' : 'window.resize');
+            }, 50));
+        }
+
+        init();
+    })();
+</script>
+</body>
+</html>

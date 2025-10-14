@@ -1,0 +1,5 @@
+html, body, #map {
+    width: 300px;
+    height: 180px;
+    margin: 0;
+}

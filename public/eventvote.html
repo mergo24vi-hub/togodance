@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Події — один файл (виправлено)</title>
+    <style>
+        :root{
+            --bg: var(--tg-theme-bg-color, #fff);
+            --fg: var(--tg-theme-text-color, #111);
+            --muted: color-mix(in oklab, var(--fg), #999 55%);
+            --card: color-mix(in oklab, var(--bg), #000 4%);
+            --border: color-mix(in oklab, var(--fg), #000 80%);
+            --accent: var(--tg-theme-button-color, #2a85ff);
+            --accent-fg: var(--tg-theme-button-text-color, #fff);
+        }
+        *{ box-sizing: border-box; }
+        html,body{ height:100%; }
+        body{
+            margin:0; background:var(--bg); color:var(--fg);
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+            display:flex; justify-content:center; align-items:stretch;
+        }
+        .app{ width:min(720px,100%); min-height:100dvh; padding:10px; display:flex; flex-direction:column; gap:10px; }
+        header{ display:flex; align-items:center; justify-content:space-between; }
+        header h1{ margin:0; font-size:18px; }
+        .hint{ color:var(--muted); font-size:12px; }
+
+        ul.events{ list-style:none; margin:0; padding:0; display:grid; gap:10px; }
+        li.event{ background:var(--card); border:1px solid color-mix(in oklab, var(--border), var(--bg) 70%); border-radius:12px; overflow:clip; }
+
+        summary{
+            list-style:none; cursor:pointer;
+            display:grid; gap:10px; padding:10px 12px;
+            grid-template-columns: auto 1fr auto; /* дата | бріф | дії */
+            align-items:start;
+        }
+        summary::-webkit-details-marker{ display:none; }
+
+        .date{
+            display:inline-flex; gap:6px; align-items:center;
+            padding:4px 8px; border:1px dashed color-mix(in oklab, var(--border), var(--bg) 60%);
+            border-radius:999px; font-size:12px; white-space:nowrap;
+        }
+        .weekday{
+            padding:2px 6px; border:1px dashed color-mix(in oklab, var(--border), var(--bg) 60%);
+            border-radius:999px; font-size:12px; text-transform:lowercase;
+        }
+        .dot{ opacity:.5; }
+
+        .brief{
+            white-space: normal;       /* показуємо повністю */
+            overflow: visible;
+            min-width: 0;
+            line-height: 1.3;
+        }
+
+        .actions{ display:flex; align-items:center; gap:8px; justify-self:end; }
+        .vote-btn{
+            appearance:none; border:0; border-radius:999px; padding:6px 10px;
+            background:var(--accent); color:var(--accent-fg); font-size:14px; cursor:pointer;
+        }
+        .vote-btn[aria-pressed="true"]{ outline:2px solid color-mix(in oklab, var(--accent), #000 30%); }
+        .count{ font-variant-numeric: tabular-nums; font-size:13px; }
+        .chev{ margin-left:6px; font-size:16px; opacity:.6; transition:transform .2s ease; }
+        details[open] .chev{ transform:rotate(90deg); }
+
+        .panel{ padding:12px; border-top:1px solid color-mix(in oklab, var(--border), var(--bg) 70%); display:grid; gap:10px; }
+        .fulltext{ line-height:1.35; }
+
+        @media (max-width: 380px){
+            summary{
+                grid-template-columns: auto 1fr; /* дата | бріф */
+                grid-auto-rows: auto;
+            }
+            .actions{ justify-self:start; } /* дії переносяться третім рядком */
+        }
+
+        @media (hover:hover){ summary:hover{ background: color-mix(in oklab, var(--card), #000 6%);} }
+    </style>
+    <!-- У Mini App скрипт зазвичай уже є; підключення тут не завадить -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+<main class="app">
+    <header>
+        <h1>Події</h1>
+        <div class="hint">Клік по рядку — деталі. Кнопка — голосування.</div>
+    </header>
+    <ul class="events" id="list"></ul>
+</main>
+
+<script type="module">
+    import DATA from './events.js';
+    const $ = (sel, root=document) => root.querySelector(sel);
+
+    // Безпечний парсер «YYYY-MM-DD» → локальний Date (без UTC-зсуву)
+    function parseISODateLocal(iso){
+        const [y, m, d] = iso.split('-').map(Number);
+        return new Date(y, (m||1)-1, d||1);
+    }
+
+    function fmtDateBits(iso){
+        const d = parseISODateLocal(iso);
+        const weekday = new Intl.DateTimeFormat('uk-UA', { weekday: 'short' }).format(d); // пн..нд
+        const date = new Intl.DateTimeFormat('uk-UA', { day: 'numeric', month: 'long' }).format(d); // 12 жовтня
+        return { weekday, date };
+    }
+
+    // Локальні «голоси» (без бекенду)
+    const LS_KEY = 'event_votes_v6';
+    const votes = new Map(Object.entries(JSON.parse(localStorage.getItem(LS_KEY) || '{}'))); // id -> {count, voters:[]}
+    const userid = (() => {
+        try {
+            const tg = window.Telegram?.WebApp;
+            if (tg?.initDataUnsafe?.user?.id) return `tg:${tg.initDataUnsafe.user.id}`;
+        } catch {}
+        return 1234;
+    })();
+    const persist = () => {
+        const obj = {};
+        for (const [id,v] of votes) obj[id] = { count: v.count||0, voters: v.voters||[] };
+        localStorage.setItem(LS_KEY, JSON.stringify(obj));
+    };
+
+    // ====== Рендер списку (з сортуванням за датою) ======
+    const list = $('#list');
+    list.innerHTML = '';
+
+    const sorted = [...DATA].sort((a,b) => parseISODateLocal(a.event_date) - parseISODateLocal(b.event_date));
+
+    for (const ev of sorted){
+        const st = votes.get(String(ev.id)) || { count:0, voters:[] };
+        const pressed = st.voters?.includes(userid);
+        const { weekday, date } = fmtDateBits(ev.event_date);
+
+        const li = document.createElement('li');
+        li.className = 'event';
+        li.innerHTML = `
+      <details data-id="${ev.id}" name="events">
+        <summary>
+          <span class="date" aria-label="Дата події">
+            <span class="weekday" aria-label="День тижня">${weekday}</span>
+            <span class="dot" aria-hidden="true">•</span>
+            <time datetime="${ev.event_date}">${date}</time>
+          </span>
+          <span class="brief">${ev.brief}</span>
+          <span class="actions">
+            <button class="vote-btn" type="button" aria-pressed="${pressed ? 'true':'false'}" aria-label="Голосувати за подію ${date} (${weekday})">👍</button>
+            <span class="count" aria-live="polite" aria-atomic="true"><strong>${st.count||0}</strong></span>
+            <span class="chev" aria-hidden="true">›</span>
+          </span>
+        </summary>
+        <div class="panel">
+          <div class="fulltext">${ev.fulltext}</div>
+        </div>
+      </details>
+    `;
+        list.append(li);
+    }
+
+    // ====== Голосування в summary (не відкриває details) ======
+    list.addEventListener('click', (e) => {
+        const btn = e.target.closest('.vote-btn');
+        if (!btn) return;
+        e.stopPropagation();
+        e.preventDefault();
+
+        const details = e.target.closest('details');
+        const id = String(details.dataset.id);
+
+        console.log(`voting for ${id} from ${userid}`);
+
+        let v = votes.get(id);
+        if (!v) v = { count:0, voters:[] };
+
+        const i = v.voters.indexOf(userid);
+        if (i === -1){
+            v.voters.push(userid);
+            v.count++;
+            btn.setAttribute('aria-pressed','true');
+        } else {
+            v.voters.splice(i,1);
+            v.count = Math.max(0,(v.count||0)-1);
+            btn.setAttribute('aria-pressed','false');
+        }
+        votes.set(id, v);
+        persist();
+
+        details.querySelector('.count strong').textContent = String(v.count||0);
+    });
+
+    // Клавіатура не «смикає» summary під час натискань на кнопку
+    list.addEventListener('keydown', (e) => {
+        if (e.target.closest('.vote-btn')) e.stopPropagation();
+    });
+
+    // Фолбек, якщо name у <details> не працює: в разі потреби — закриватимемо сусідів вручну
+    (function fallbackIfNoNameSupport(){
+        const a = document.createElement('details'); a.setAttribute('name','events');
+        const b = document.createElement('details'); b.setAttribute('name','events');
+        document.body.append(a,b); a.open = true; b.open = true;
+        const supported = !(a.open && b.open);
+        a.remove(); b.remove();
+        if (supported) return;
+        list.addEventListener('toggle', (e) => {
+            const d = e.target;
+            if (d.tagName !== 'DETAILS' || !d.open) return;
+            const name = d.getAttribute('name');
+            if (!name) return;
+            for (const other of list.querySelectorAll(`details[name="${CSS.escape(name)}"]`)){
+                if (other !== d && other.open) other.open = false;
+            }
+        });
+    })();
+
+    // Розгорнути веб-додаток у Telegram (якщо доступно)
+    try { window.Telegram?.WebApp?.expand?.(); } catch {}
+</script>
+</body>
+</html>
