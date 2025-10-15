@@ -92,8 +92,15 @@
 
 <script type="module">
     import DATA from './events.js';
+    import ky from 'https://esm.sh/ky@^1';
+    const poll = await ky.get('http://localhost:8888/.netlify/functions/getpoll').json();
+    console.log(poll)
+
     const $ = (sel, root=document) => root.querySelector(sel);
 
+    function getpoll(){
+
+    }
     // Безпечний парсер «YYYY-MM-DD» → локальний Date (без UTC-зсуву)
     function parseISODateLocal(iso){
         const [y, m, d] = iso.split('-').map(Number);
@@ -110,6 +117,8 @@
     // Локальні «голоси» (без бекенду)
     const LS_KEY = 'event_votes_v6';
     const votes = new Map(Object.entries(JSON.parse(localStorage.getItem(LS_KEY) || '{}'))); // id -> {count, voters:[]}
+    const rvotes = poll['poll'];
+
     const userid = (() => {
         try {
             const tg = window.Telegram?.WebApp;
@@ -130,8 +139,10 @@
     const sorted = [...DATA].sort((a,b) => parseISODateLocal(a.event_date) - parseISODateLocal(b.event_date));
 
     for (const ev of sorted){
-        const st = votes.get(String(ev.id)) || { count:0, voters:[] };
-        const pressed = st.voters?.includes(userid);
+        let st;
+        try {st = rvotes[ev.id]} catch (e) {st=0}
+         //votes.get(String(ev.id)) || { count:0, voters:[] };
+        const pressed = poll['voted']?.includes(userid);
         const { weekday, date } = fmtDateBits(ev.event_date);
 
         const li = document.createElement('li');
@@ -147,7 +158,7 @@
           <span class="brief">${ev.brief}</span>
           <span class="actions">
             <button class="vote-btn" type="button" aria-pressed="${pressed ? 'true':'false'}" aria-label="Голосувати за подію ${date} (${weekday})">👍</button>
-            <span class="count" aria-live="polite" aria-atomic="true"><strong>${st.count||0}</strong></span>
+            <span class="count" aria-live="polite" aria-atomic="true"><strong>${st||0}</strong></span>
             <span class="chev" aria-hidden="true">›</span>
           </span>
         </summary>
