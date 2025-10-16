@@ -91,7 +91,8 @@
 </main>
 
 <script type="module">
-    const host = 'http://localhost:8888/'
+    //const host = 'http://localhost:8888/'
+    const host = 'https://togodance.netlify.app/'
     import DATA from './events.js';
     import ky from 'https://esm.sh/ky@^1';
     const polldata = await ky.get(host+'.netlify/functions/getpoll').json();
