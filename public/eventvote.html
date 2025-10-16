@@ -121,7 +121,7 @@
     const userid = (() => {
         try {
             const tg = window.Telegram?.WebApp;
-            if (tg?.initDataUnsafe?.user?.id) return `tg:${tg.initDataUnsafe.user.id}`;
+            if (tg?.initDataUnsafe?.user?.id) return tg.initDataUnsafe.user.id;
         } catch {}
         return 1234;
     })();
