@@ -3,8 +3,8 @@ import {getStore} from "@netlify/blobs";
 export default async function handler(req, context) {
     const store = getStore("main-store");
 
-    await store.set('votedinpoll:001', '[444,4333]');
-    await store.set('poll:001', '{"7559":2,"7703":1}');
+    await store.set('votedinpoll:001', '[111,222]');
+    await store.set('poll:001', '{"7559":1,"7703":0}');
     await store.delete('votedinpoll');
 
     const raw = await store.get("votedinpoll:001");

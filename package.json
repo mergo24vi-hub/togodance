@@ -17,6 +17,7 @@
   "homepage": "https://github.com/mergo24vi-hub/togodance#readme",
   "description": "",
   "dependencies": {
-    "@netlify/functions": "^4.3.0"
+    "@netlify/functions": "^4.3.0",
+    "ky": "^1.4.0"
   }
 }

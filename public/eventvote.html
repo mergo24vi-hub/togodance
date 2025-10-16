@@ -91,16 +91,14 @@
 </main>
 
 <script type="module">
+    const host = 'http://localhost:8888/'
     import DATA from './events.js';
     import ky from 'https://esm.sh/ky@^1';
-    const poll = await ky.get('http://localhost:8888/.netlify/functions/getpoll').json();
-    console.log(poll)
+    const polldata = await ky.get(host+'.netlify/functions/getpoll').json();
+    console.log(polldata)
 
     const $ = (sel, root=document) => root.querySelector(sel);
 
-    function getpoll(){
-
-    }
     // Безпечний парсер «YYYY-MM-DD» → локальний Date (без UTC-зсуву)
     function parseISODateLocal(iso){
         const [y, m, d] = iso.split('-').map(Number);
@@ -117,7 +115,7 @@
     // Локальні «голоси» (без бекенду)
     const LS_KEY = 'event_votes_v6';
     const votes = new Map(Object.entries(JSON.parse(localStorage.getItem(LS_KEY) || '{}'))); // id -> {count, voters:[]}
-    const rvotes = poll['poll'];
+    const rvotes = polldata.poll;
 
     const userid = (() => {
         try {
@@ -137,12 +135,13 @@
     list.innerHTML = '';
 
     const sorted = [...DATA].sort((a,b) => parseISODateLocal(a.event_date) - parseISODateLocal(b.event_date));
+    let voted = polldata.voted?.includes(userid);
 
     for (const ev of sorted){
         let st;
         try {st = rvotes[ev.id]} catch (e) {st=0}
          //votes.get(String(ev.id)) || { count:0, voters:[] };
-        const pressed = poll['voted']?.includes(userid);
+
         const { weekday, date } = fmtDateBits(ev.event_date);
 
         const li = document.createElement('li');
@@ -157,7 +156,7 @@
           </span>
           <span class="brief">${ev.brief}</span>
           <span class="actions">
-            <button class="vote-btn" type="button" aria-pressed="${pressed ? 'true':'false'}" aria-label="Голосувати за подію ${date} (${weekday})">👍</button>
+            <button class="vote-btn" type="button" aria-pressed="${voted ? 'true':'false'}" aria-label="Голосувати за подію ${date} (${weekday})">👍</button>
             <span class="count" aria-live="polite" aria-atomic="true"><strong>${st||0}</strong></span>
             <span class="chev" aria-hidden="true">›</span>
           </span>
@@ -171,34 +170,44 @@
     }
 
     // ====== Голосування в summary (не відкриває details) ======
-    list.addEventListener('click', (e) => {
+    list.addEventListener('click', async (e) => {
         const btn = e.target.closest('.vote-btn');
-        if (!btn) return;
+        //if (!btn || polldata.voted.includes(userid)) return;
         e.stopPropagation();
         e.preventDefault();
 
         const details = e.target.closest('details');
-        const id = String(details.dataset.id);
+        const issueid = String(details.dataset.id);
+        let curvotes = polldata.poll[issueid] || 0
 
-        console.log(`voting for ${id} from ${userid}`);
+        console.log(`voting for ${issueid} from ${userid} now ${curvotes}`);
+        if (voted) return
+        const voterez = await ky.get(host+'.netlify/functions/sendvoice',
+            {
+                searchParams: {issueid,userid,q: 'kyiv'}
+            })
+            .json();
+        curvotes++;
+        voted = true
+        details.querySelector('.count strong').textContent = String(curvotes);
 
-        let v = votes.get(id);
-        if (!v) v = { count:0, voters:[] };
 
-        const i = v.voters.indexOf(userid);
-        if (i === -1){
-            v.voters.push(userid);
-            v.count++;
-            btn.setAttribute('aria-pressed','true');
-        } else {
-            v.voters.splice(i,1);
-            v.count = Math.max(0,(v.count||0)-1);
-            btn.setAttribute('aria-pressed','false');
-        }
-        votes.set(id, v);
-        persist();
-
-        details.querySelector('.count strong').textContent = String(v.count||0);
+        // let v = votes.get(issueid);
+        // if (!v) v = { count:0, voters:[] };
+        // const i = v.voters.indexOf(userid);
+        // if (i === -1){
+        //     v.voters.push(userid);
+        //     v.count++;
+        //     btn.setAttribute('aria-pressed','true');
+        // } else {
+        //     v.voters.splice(i,1);
+        //     v.count = Math.max(0,(v.count||0)-1);
+        //     btn.setAttribute('aria-pressed','false');
+        // }
+        // votes.set(issueid, v);
+        // persist();
+        // details.querySelector('.count strong').textContent = String(v.count||0);
+        //
     });
 
     // Клавіатура не «смикає» summary під час натискань на кнопку
