@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Київ — мапа (Leaflet + OSM)</title>
+
+    <!-- Telegram SDK (у Mini App зазвичай вже є, але не завадить) -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+    <style>
+        :root {
+            /* фолбек: 100svh працює краще в контейнерах мобільних застосунків */
+            --vh: 100svh;
+        }
+        html, body {
+            height: 100%;
+            margin: 0;
+            background: var(--tg-theme-bg-color, #fff);
+            color: var(--tg-theme-text-color, #111);
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+        }
+        #map {
+            /* займаємо весь доступний простір Mini App */
+            height: var(--vh);
+            width: 100%;
+        }
+        /* базові правки стилів Leaflet для темної теми Telegram */
+        .leaflet-container {
+            background: var(--tg-theme-bg-color, #fff);
+        }
+        .leaflet-control-attribution {
+            background: rgba(255,255,255,.8);
+        }
+    </style>
+</head>
+<body>
+<div id="map" aria-label="Мапа Києва"></div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+    (function () {
+        // Якщо запущено всередині Telegram Mini App — просимо максимальну висоту
+        if (window.Telegram && Telegram.WebApp) {
+            try {
+                Telegram.WebApp.ready();
+                Telegram.WebApp.expand();
+            } catch (_) {}
+        }
+
+        // Коректно виставляємо висоту контейнера під Mini App/мобільні браузери
+        function setVh() {
+            // 100svh більш стабільний у вебв’ю, але підстрахуємося innerHeight'ом
+            const h = Math.max(window.innerHeight || 0, 300);
+            document.documentElement.style.setProperty('--vh', h + 'px');
+            // Після зміни розміру — оновимо мапу
+            if (window.__map) {
+                setTimeout(() => window.__map.invalidateSize(), 0);
+            }
+        }
+        setVh();
+        window.addEventListener('resize', setVh);
+
+        // Стартові координати Києва
+        const KYIV = [50.4501, 30.5234];
+
+        // Ініціалізація мапи
+        const map = L.map('map', {
+            center: KYIV,
+            zoom: 12,
+            zoomControl: true,
+            attributionControl: true
+        });
+
+        // OSM тайли (без ключів, безкоштовно; не забудьте атрибуцію)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution:
+                '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Легка валідація розміру після завантаження
+        window.__map = map;
+        window.addEventListener('load', () => setTimeout(() => map.invalidateSize(), 0));
+    })();
+</script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Вечірки Києва — мапа</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+    <style>
+        :root { --vh: 100svh; } /* реальне значення поставить miniapp-layout.js */
+        html, body {
+            height: 100%;
+            margin: 0;
+            background: var(--tg-theme-bg-color, #fff);
+            color: var(--tg-theme-text-color, #111);
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+        }
+        #map { height: var(--vh); width: 100%; }
+
+        /* Стиль завжди видимого підпису біля маркера */
+        .leaflet-tooltip.party-label {
+            pointer-events: none;           /* щоб не заважав кліку по маркеру */
+            background: rgba(255,255,255,.9);
+            border: 1px solid rgba(0,0,0,.15);
+            border-radius: 6px;
+            padding: 2px 6px;
+            font-size: 13px;
+            color: #111;
+            box-shadow: 0 1px 2px rgba(0,0,0,.1);
+            white-space: nowrap;
+        }
+        .leaflet-container { background: var(--tg-theme-bg-color, #fff); }
+    </style>
+</head>
+<body>
+<div id="map" aria-label="Мапа вечірок Києва"></div>
+
+<!-- (необов'язково) Telegram SDK -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Лише логіка рендерингу карти -->
+<script type="module">
+    import { attachMapInvalidate } from './miniapp-layout.js';
+
+    // 1) Дані вечірок (можеш підставляти свій масив):
+    import parties from './events.js';
+
+    // 2) Утиліта для безпечного HTML у попапі
+    function escapeHtml(s='') {
+        return s
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    // 3) Базова мапа
+    const KYIV = [50.4501, 30.5234];
+    const map = L.map('map', {
+        center: KYIV,
+        zoom: 12,
+        zoomControl: true,
+        attributionControl: true
+    });
+
+    // OSM тайли (обов'язкова атрибуція)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    attachMapInvalidate(map); // акуратна реакція на ресайз/старт
+
+    // 4) Додаємо маркери, підписи та попапи
+    const bounds = [];
+    for (const p of parties) {
+        if (typeof p.lat !== 'number' || typeof p.lng !== 'number') continue;
+
+        const ll = [p.lat, p.lng];
+        bounds.push(ll);
+
+        const m = L.marker(ll).addTo(map);
+
+        // Постійний підпис над маркером (завжди видно)
+        const label = (p.title ?? 'Подія').toString();
+        m.bindTooltip(label, {
+            permanent: true,
+            direction: 'top',
+            offset: [0, -28],
+            className: 'party-label'
+        }).openTooltip();
+
+        // Попап із fulltext по кліку
+        const body = `
+        <div style="max-width:320px; line-height:1.25;">
+          <div style="font-weight:600; margin-bottom:6px;">${escapeHtml(p.title ?? 'Подія')}</div>
+          <div style="white-space:pre-wrap;">${escapeHtml(p.brief ?? '')}</div>
+        </div>
+      `;
+        m.bindPopup(body, { maxWidth: 340, autoPan: true });
+    }
+
+    // 5) Підігнати огляд під усі точки
+    if (bounds.length) {
+        map.fitBounds(bounds, { padding: [24, 24] });
+    }
+</script>
+</body>
+</html>
