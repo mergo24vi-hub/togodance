@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mini App</title>
+    <!-- У середовищі Telegram скрипт зазвичай вже є, але підключення тут не завадить -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="/tg-style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <link rel="stylesheet" href="lmap.css"/>
+</head>
+<body>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<div class="card" id="app" hidden>
+    <h1>Telegram Mini App</h1>
+    <p class="muted">Завантаження…</p>
+</div>
+<div id="map" style="border-color: black;"></div>
+
+<script>
+    (function () {
+        function renderInsideTelegram() {
+            // опційно — встановимо розмір вікна під контент
+            try { tg.expand && tg.expand(); } catch {}
+
+            app.innerHTML = `
+          <h1>Привіт${name ? ', ' + name : ''}!</h1>
+          <p>Ваш <strong>user.id</strong>: <code>${id}</code></p>
+          <p class="muted">Це міні-додаток працює всередині Telegram.</p>
+          <div class="row">
+            <button class="btn" id="haptic">Вібро-відгук</button>
+          </div>
+        `;
+
+            // приклад haptic feedback
+            const btn = document.getElementById('haptic');
+            btn?.addEventListener('click', () => {
+                tg.HapticFeedback?.impactOccurred?.('light');
+            });
+        }
+        function renderDemo() {
+            app.innerHTML = `
+          <h1>Демо-режим</h1>
+          <p>Запустіть цю сторінку як <em>Telegram Mini App</em>, щоб побачити реальний <code>user.id</code>.</p>
+          <p class="muted">Зараз Telegram WebApp API недоступний, тому показано демо-контент.</p>
+        `;
+        }
+
+        const el = (sel) => document.querySelector(sel);
+        const app = el('#app');
+        const tg = (window.Telegram && Telegram.WebApp) ? Telegram.WebApp : null;
+        try { tg?.ready?.(); } catch {}// обов’язково викличте ready()
+        const user = tg.initDataUnsafe && tg.initDataUnsafe.user || {};
+        const id = user.id ?? 123;
+        const name = (user.first_name || '') + (user.last_name ? (' ' + user.last_name) : '');
+
+        if (id!==123) {
+            //renderInsideTelegram();
+        } else {
+            //renderDemo();
+        }
+    })();
+
+    // Плитки MapTiler (можеш залишити як є)
+    const MAPTILER_KEY = "tJoJlJ4VvyIVk26MvPbb";
+
+    // Ініціалізація карти
+    const map = L.map('map').setView([50.450001, 30.523333], 12);
+
+    const TILE_URL = `https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}@2x.png?key=${MAPTILER_KEY}`;
+    //const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+    L.tileLayer(TILE_URL, {
+        attribution: 'Карта від &copy; <a href="https://t.me/openairskyiv">танцювальний дайджест, 2025</a>',
+        tileSize: 256,
+        maxZoom: 19
+    }).addTo(map);
+
+</script>
+</body>
+</html>

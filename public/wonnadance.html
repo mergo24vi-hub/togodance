@@ -2,80 +2,192 @@
 <html lang="uk">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mini App</title>
-    <!-- У середовищі Telegram скрипт зазвичай вже є, але підключення тут не завадить -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="stylesheet" href="/tg-style.css">
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>wonna dance — мапа</title>
+
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <link rel="stylesheet" href="lmap.css"/>
+
+    <style>
+        :root { --vh: 100svh; } /* реальне значення поставить miniapp-layout.js */
+        html, body {
+            height: 100%;
+            margin: 0;
+            background: var(--tg-theme-bg-color, #fff);
+            color: var(--tg-theme-text-color, #111);
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif;
+        }
+        #map { height: var(--vh); width: 100%; }
+
+        /* Стиль завжди видимого підпису біля маркера */
+        .leaflet-tooltip.party-label {
+            pointer-events: none;           /* щоб не заважав кліку по маркеру */
+            background: rgba(255,255,255,.9);
+            border: 1px solid rgba(0,0,0,.15);
+            border-radius: 6px;
+            padding: 2px 6px;
+            font-size: 13px;
+            color: #111;
+            box-shadow: 0 1px 2px rgba(0,0,0,.1);
+            white-space: nowrap;
+        }
+        .leaflet-container { background: var(--tg-theme-bg-color, #fff); }
+    </style>
 </head>
 <body>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<div class="card" id="app" hidden>
-    <h1>Telegram Mini App</h1>
-    <p class="muted">Завантаження…</p>
+<div id="map" aria-label="Мапа вечірок Києва"></div>
+<div id="comment-box" style="display:none; position:absolute; top:10px; left:50%; transform:translateX(-50%);
+background:white; padding:8px; border:1px solid #ccc; z-index:2000;">
+    <input type="text" id="rect-comment" placeholder="Введіть коментар"/>
+    <button id="save-comment">Зберегти</button>
 </div>
-<div id="map" style="border-color: black;"></div>
 
-<script>
-    (function () {
-        function renderInsideTelegram() {
-            // опційно — встановимо розмір вікна під контент
-            try { tg.expand && tg.expand(); } catch {}
+<!-- (необов'язково) Telegram SDK -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-            app.innerHTML = `
-          <h1>Привіт${name ? ', ' + name : ''}!</h1>
-          <p>Ваш <strong>user.id</strong>: <code>${id}</code></p>
-          <p class="muted">Це міні-додаток працює всередині Telegram.</p>
-          <div class="row">
-            <button class="btn" id="haptic">Вібро-відгук</button>
-          </div>
-        `;
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 
-            // приклад haptic feedback
-            const btn = document.getElementById('haptic');
-            btn?.addEventListener('click', () => {
-                tg.HapticFeedback?.impactOccurred?.('light');
-            });
-        }
-        function renderDemo() {
-            app.innerHTML = `
-          <h1>Демо-режим</h1>
-          <p>Запустіть цю сторінку як <em>Telegram Mini App</em>, щоб побачити реальний <code>user.id</code>.</p>
-          <p class="muted">Зараз Telegram WebApp API недоступний, тому показано демо-контент.</p>
-        `;
-        }
+<!-- Лише логіка рендерингу карти -->
+<script type="module">
+    import { attachMapInvalidate } from './miniapp-layout.js';
 
-        const el = (sel) => document.querySelector(sel);
-        const app = el('#app');
-        const tg = (window.Telegram && Telegram.WebApp) ? Telegram.WebApp : null;
-        try { tg?.ready?.(); } catch {}// обов’язково викличте ready()
-        const user = tg.initDataUnsafe && tg.initDataUnsafe.user || {};
-        const id = user.id ?? 123;
-        const name = (user.first_name || '') + (user.last_name ? (' ' + user.last_name) : '');
 
-        if (id!==123) {
-            //renderInsideTelegram();
-        } else {
-            //renderDemo();
-        }
-    })();
+    // 2) Утиліта для безпечного HTML у попапі
+    function escapeHtml(s='') {
+        return s
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
-    // Плитки MapTiler (можеш залишити як є)
-    const MAPTILER_KEY = "tJoJlJ4VvyIVk26MvPbb";
+    // 3) Базова мапа
+    const KYIV = [50.4501, 30.5234];
+    const map = L.map('map', {
+        center: KYIV,
+        zoom: 12,
+        zoomControl: true,
+        attributionControl: true
+    });
 
-    // Ініціалізація карти
-    const map = L.map('map').setView([50.450001, 30.523333], 12);
-
-    const TILE_URL = `https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}@2x.png?key=${MAPTILER_KEY}`;
-    //const TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-    L.tileLayer(TILE_URL, {
-        attribution: 'Карта від &copy; <a href="https://t.me/openairskyiv">танцювальний дайджест, 2025</a>',
-        tileSize: 256,
-        maxZoom: 19
+    // OSM тайли (обов'язкова атрибуція)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
 
+
+    // drawnItems/Control - дві групи
+    const existingRects = L.layerGroup().addTo(map);   // тільки «чужі/готові» прямокутники
+    const userRectGroup = new L.FeatureGroup().addTo(map); // тільки один «користувацький»
+
+    const drawControl = new L.Control.Draw({
+        draw: {
+            polygon: false,
+            polyline: false,
+            circle: false,
+            marker: false,
+            circlemarker: false,
+            rectangle: {
+                shapeOptions: {color: '#3388ff', weight: 2}
+            }
+        },
+        edit: {
+            featureGroup: userRectGroup,
+            remove: true
+        }
+    });
+    map.addControl(drawControl);
+
+    const allBounds = [];
+
+    for (const item of getRects()){ //
+        const rect = L.rectangle(item.rectangle, { color: '#3388ff', weight: 2 })
+            .addTo(existingRects);
+
+        // Безпечний tooltip (DOM node)
+        rect.bindTooltip((item.comment || ''), {
+            permanent: true,
+            direction: 'bottom',
+            className: 'rect-comment-tooltip'
+        });
+
+    }
+
+    map.on(L.Draw.Event.CREATED, ({ layer }) => {
+        userRectGroup.clearLayers().addLayer(layer);
+
+        if (!(layer instanceof L.Rectangle)) return;
+
+        console.log('Прямокутник координати:', layer.getBounds().toBBoxString());
+        const b = layer.getBounds();
+        const arrayFormat = [
+            [b.getSouth(), b.getWest()],
+            [b.getNorth(), b.getEast()]
+        ];
+        console.log(arrayFormat);
+
+        const box = document.getElementById('comment-box');
+        const btn = document.getElementById('save-comment');
+        const input = document.getElementById('rect-comment');
+
+        box.style.display = 'block';
+
+        // додаємо слухача один раз (once: true) — не накопичуємо обробники
+        btn.addEventListener('click', function saveRectCommentHandler() {
+            const text = input.value.trim();
+            box.style.display = 'none';
+            input.value = '';
+
+            if (!text) return;
+
+            // Безпечний контент: передаємо DOM-елемент (щоб уникнути ін'єкцій HTML)
+            const textNode = document.createTextNode(text);
+            layer.bindTooltip(textNode, {
+                permanent: true,
+                direction: 'bottom',
+                className: 'rect-comment-tooltip'
+            }).openTooltip();
+
+            console.log('Додано коментар:', text);
+        }, { once: true });
+    });
+
+    attachMapInvalidate(map); // акуратна реакція на ресайз/старт
+
+    function getRects() {
+        return [
+            {
+                "userid": 3333, "rectangle": [
+                    [
+                        50.47913814989625,
+                        30.455131530761722
+                    ],
+                    [
+                        50.50010724740268,
+                        30.500450134277347
+                    ]
+                ], "comment": "хочу чача"
+            },
+            {
+                "userid": 4444, "rectangle": [
+                    [
+                        50.44482488145606,
+                        30.57804107666016
+                    ],
+                    [
+                        50.463842315762456,
+                        30.608940124511722
+                    ]
+                ], "comment": "хочу бачача"
+            }
+        ]
+    }
 </script>
 </body>
 </html>
