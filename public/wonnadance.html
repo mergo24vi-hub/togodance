@@ -111,8 +111,17 @@ background:white; padding:8px; border:1px solid #ccc; z-index:2000;">
 
 
     // drawnItems/Control - дві групи
-    const existingRects = L.layerGroup().addTo(map);   // тільки «чужі/готові» прямокутники
+    const existingRects = L.featureGroup().addTo(map);   // тільки «чужі/готові» прямокутники
     const userRectGroup = new L.FeatureGroup().addTo(map); // тільки один «користувацький»
+
+    // 1) Міняємо тексти тулбару (кнопки) і підказок
+    L.drawLocal.draw.toolbar.buttons.rectangle = 'Намалювати зону занятть';
+    L.drawLocal.draw.handlers.rectangle.tooltip.start = 'Клікніть і тягніть, щоб намалювати прямокутник.';
+    L.drawLocal.draw.handlers.simpleshape.tooltip.end = 'Відпустіть кнопку миші, щоб завершити.';
+
+    // (необов’язково) локалізація кнопок дій
+    L.drawLocal.draw.toolbar.actions.title = 'Скасувати малювання';
+    L.drawLocal.draw.toolbar.actions.text  = 'Скасувати';
 
     const drawControl = new L.Control.Draw({
         draw: {
@@ -266,7 +275,7 @@ background:white; padding:8px; border:1px solid #ccc; z-index:2000;">
                         50.50010724740268,
                         30.500450134277347
                     ]
-                ], "comment": "хочу чача"
+                ], "comment": "хочу акро-йогу"
             },
             {
                 "id": "feyko563",
@@ -279,7 +288,7 @@ background:white; padding:8px; border:1px solid #ccc; z-index:2000;">
                         50.463842315762456,
                         30.608940124511722
                     ]
-                ], "comment": "хочу бачача"
+                ], "comment": "хочу кундаліні-йогу"
             }
         ]
     }
