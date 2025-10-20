@@ -32,6 +32,34 @@
             white-space: nowrap;
         }
         .leaflet-container { background: var(--tg-theme-bg-color, #fff); }
+
+        .vote-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: rgba(255,255,255,.95);
+            border: 1px solid rgba(0,0,0,.15);
+            box-shadow: 0 1px 2px rgba(0,0,0,.1);
+            font: 13px/1.2 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+            user-select: none;
+            white-space: nowrap;
+        }
+        .vote-badge button {
+            border: none;
+            background: #1976d2;
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font: inherit;
+            cursor: pointer;
+        }
+        .vote-badge button[disabled] {
+            background: #9e9e9e;
+            cursor: default;
+            opacity: .75;
+        }
     </style>
 </head>
 <body>
@@ -109,13 +137,29 @@ background:white; padding:8px; border:1px solid #ccc; z-index:2000;">
     for (const item of getRects()){ //
         const rect = L.rectangle(item.rectangle, { color: '#3388ff', weight: 2 })
             .addTo(existingRects);
-
+        rect._id = item.id;
         // Безпечний tooltip (DOM node)
         rect.bindTooltip((item.comment || ''), {
             permanent: true,
             direction: 'bottom',
             className: 'rect-comment-tooltip'
         });
+
+        const baseStyle  = { color: '#3388ff', weight: 2, fillOpacity: 0.15, interactive: true };
+        const hoverStyle = { weight: 3, fillOpacity: 0.3 };
+
+        rect
+            .on('click', (e) => {
+                console.log('rect clicked '+rect._id)
+            })
+            .on('mouseover', (e) => {
+                console.log('rect overed '+rect._id)
+                e.target.setStyle(hoverStyle).bringToFront();
+            })
+            .on('mouseout', (e) => {
+                console.log('rect out '+rect._id)
+                e.target.setStyle(baseStyle);
+            })
 
     }
 
@@ -126,6 +170,7 @@ background:white; padding:8px; border:1px solid #ccc; z-index:2000;">
 
         console.log('Прямокутник координати:', layer.getBounds().toBBoxString());
         const b = layer.getBounds();
+        console.log(rectId(b))
         const arrayFormat = [
             [b.getSouth(), b.getWest()],
             [b.getNorth(), b.getEast()]
@@ -160,9 +205,44 @@ background:white; padding:8px; border:1px solid #ccc; z-index:2000;">
 
     attachMapInvalidate(map); // акуратна реакція на ресайз/старт
 
+    function rectId(bounds) {
+        const b = bounds;
+        const s = [
+            b.getSouthWest().lat.toFixed(6), b.getSouthWest().lng.toFixed(6),
+            b.getNorthEast().lat.toFixed(6), b.getNorthEast().lng.toFixed(6)
+        ].join(',');
+
+        // djb2 (32-bit)
+        let h = 5381;
+        for (let i = 0; i < s.length; i++) {
+            h = ((h << 5) + h) + s.charCodeAt(i); // h*33 + c
+        }
+        // беззнакове 32-бітове число
+        let n = h >>> 0;
+
+        // у base36 найкоротше представлення
+        let id = n.toString(36);
+
+        // детерміноване доповнення до 10 символів простим змішуванням
+        while (id.length < 10) {
+            n = (n * 2654435761) >>> 0; // "золоте" множення для міксу
+            id += n.toString(36);
+        }
+        return id.slice(0, 10);
+    }
+
+    function eastEdgeCenter(bounds) {
+        const ne = bounds.getNorthEast();
+        const se = bounds.getSouthEast();
+        const lat = (ne.lat + se.lat) / 2;
+        const lng = ne.lng;
+        return L.latLng(lat, lng);
+    }
+
     function getRects() {
         return [
             {
+                "id":"bg346dft5",
                 "userid": 3333, "rectangle": [
                     [
                         50.47913814989625,
@@ -175,6 +255,7 @@ background:white; padding:8px; border:1px solid #ccc; z-index:2000;">
                 ], "comment": "хочу чача"
             },
             {
+                "id": "feyko563",
                 "userid": 4444, "rectangle": [
                     [
                         50.44482488145606,
