@@ -134,7 +134,9 @@ background:white; padding:8px; border:1px solid #ccc; z-index:2000;">
 
     const allBounds = [];
 
-    for (const item of getRects()){ //
+    const items = getRects()
+
+    for (const item of items){ //
         const rect = L.rectangle(item.rectangle, { color: '#3388ff', weight: 2 })
             .addTo(existingRects);
         rect._id = item.id;
@@ -161,6 +163,18 @@ background:white; padding:8px; border:1px solid #ccc; z-index:2000;">
                 e.target.setStyle(baseStyle);
             })
 
+    }
+
+    // 3) Підігнати карту під усі прямокутники (один виклик ПІСЛЯ циклу)
+    if (items.length) {
+        const bounds = existingRects.getBounds();
+        if (bounds.isValid()) {
+            map.fitBounds(bounds, {
+                padding: [20, 20], // трохи відступів від країв
+                maxZoom: 16,       // не занадто наближати
+                animate: true
+            });
+        }
     }
 
     map.on(L.Draw.Event.CREATED, ({ layer }) => {
